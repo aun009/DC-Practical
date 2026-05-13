@@ -1,71 +1,27 @@
 import random
 
-# Server Class
-class Server:
-    def __init__(self, name):
-        self.name = name
-        self.load = 0 # number of active requests
+class LoadBalancer:
+    def __init__(self, servers):
+        self.servers = servers
+        self.server_index_rr = 0
 
-    def handle_request(self):
-        self.load += 1
+    def round_robin(self):
+        server = self.servers[self.server_index_rr]
+        self.server_index_rr = (self.server_index_rr + 1) % len(self.servers)
+        return server
 
-    def __str__(self):
-        return f"{self.name} (Load: {self.load})"
+    def random_selection(self):
+        return random.choice(self.servers)
 
-# Load Balancer Algorithms
+def simulate_client_requests(load_balancer, num_requests):
+    for i in range(num_requests):
+        print(f"Request {i+1}:", end=" ")
+        server_rr = load_balancer.round_robin()
+        print(f"Round Robin -> {server_rr}", end=" | ")
+        server_random = load_balancer.random_selection()
+        print(f"Random -> {server_random}")
 
-# Round Robin
-def round_robin(servers, requests):
-    print("\n--- Round Robin ---")
-    index = 0
-    for req in requests:
-        server = servers[index % len(servers)]
-        server.handle_request()
-        print(f"Request {req} -> {server.name}")
-        index += 1
-
-# Least Connections
-def least_connections(servers, requests):
-    print("\n--- Least Connections ---")
-    for req in requests:
-        server = min(servers, key=lambda s: s.load)
-        server.handle_request()
-        print(f"Request {req} -> {server.name}")
-
-# Random Selection
-def random_selection(servers, requests):
-    print("\n--- Random Selection ---")
-    for req in requests:
-        server = random.choice(servers)
-        server.handle_request()
-        print(f"Request {req} -> {server.name}")
-
-# Simulation
-
-# Create servers
-servers = [Server("Server-1"), Server("Server-2"), Server("Server-3")]
-
-# Simulated client requests
-requests = list(range(1, 11)) # 10 requests
-print("Client Requests:", requests)
-
-# Run Algorithms
-round_robin(servers, requests)
-
-# Reset loads
-for s in servers:
-    s.load = 0
-
-least_connections(servers, requests)
-
-# Reset loads
-for s in servers:
-    s.load = 0
-
-random_selection(servers, requests)
-
-# Final Server Loads
-print("\n--- Final Server Loads ---")
-for s in servers:
-    print(s)
-  
+if __name__ == "__main__":
+    servers = ["Server A", "Server B", "Server C"]
+    lb = LoadBalancer(servers)
+    simulate_client_requests(lb, 10)

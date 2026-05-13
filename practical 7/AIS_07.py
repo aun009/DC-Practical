@@ -1,62 +1,34 @@
-import numpy as np
 import random
-import matplotlib.pyplot as plt
+import numpy as np
+from deap import base, creator, tools, algorithms
 
-# Generate Dummy Structural Data
-np.random.seed(42)
-X = np.random.rand(100, 3) # features
-y = (X[:,0] + X[:,1] > 1).astype(int) # damage classification
+creator.create("FitnessMax", base.Fitness, weights=(1.0,))
+creator.create("Individual", list, fitness=creator.FitnessMax)
 
-# Split data
-split = 80
-X_train, X_test = X[:split], X[split:]
-y_train, y_test = y[:split], y[split:]
+toolbox = base.Toolbox()
+toolbox.register("attr_float", random.uniform, -5, 5)
+toolbox.register("individual", tools.initRepeat, creator.Individual, toolbox.attr_float, n=2)
+toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 
-# Antibody (Model)
-def create_antibody():
-    return np.random.rand(3) # weights
+def evalOneMax(individual):
+    x, y = individual
+    return -(x**2 + y**2),  # maximize -(x²+y²) → find (0,0)
 
-def predict(ab, x):
-    return 1 if np.dot(ab, x) > 1.5 else 0
+toolbox.register("evaluate", evalOneMax)
+toolbox.register("mate", tools.cxBlend, alpha=0.5)
+toolbox.register("mutate", tools.mutGaussian, mu=0, sigma=1, indpb=0.2)
+toolbox.register("select", tools.selTournament, tournsize=3)
 
-# Fitness (Accuracy)
-def fitness(ab):
-    correct = sum(predict(ab, x) == y for x, y in zip(X_train, y_train))
-    return correct / len(X_train)
-
-# Clone + Mutate
-def clone_mutate(pop):
-    clones = []
-    for i, ab in enumerate(pop):
-        for _ in range(3):
-            mutation = np.random.uniform(-0.1/(i+1), 0.1/(i+1), size=3)
-            clones.append(ab + mutation)
-    return clones
-
-# AIS Training
-pop = [create_antibody() for _ in range(10)]
-history = []
-
-for gen in range(20):
-    pop = sorted(pop, key=fitness, reverse=True)
-    best = pop[:5]
-    clones = clone_mutate(best)
-    pop = best + clones
+def main():
+    pop = toolbox.population(n=50)
+    hof = tools.HallOfFame(1)
+    stats = tools.Statistics(lambda ind: ind.fitness.values)
+    stats.register("avg", np.mean)
+    stats.register("min", np.min)
+    stats.register("max", np.max)
     
-    # Replace worst
-    pop += [create_antibody() for _ in range(5)]
-    best_fit = fitness(pop[0])
-    history.append(best_fit)
-    print(f"Gen {gen+1} Accuracy: {best_fit:.2f}")
+    algorithms.eaSimple(pop, toolbox, cxpb=0.7, mutpb=0.2, ngen=40, stats=stats, halloffame=hof, verbose=True)
+    print("Best individual:", hof[0])
 
-# Test Best Model
-best_ab = max(pop, key=fitness)
-test_acc = sum(predict(best_ab, x) == y for x, y in zip(X_test, y_test)) / len(X_test)
-print("\nTest Accuracy:", test_acc)
-
-# Plot Accuracy
-plt.plot(history)
-plt.xlabel("Generations")
-plt.ylabel("Accuracy")
-plt.title("AIS Damage Classification")
-plt.show()
+if __name__ == "__main__":
+    main()

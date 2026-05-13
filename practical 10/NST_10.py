@@ -1,93 +1,57 @@
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torchvision import transforms
-from torchvision.models import vgg19, VGG19_Weights
-from PIL import Image
-import matplotlib.pyplot as plt
+import numpy as np
+import random
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def aco_tsp(dist_matrix, n_ants=20, n_iterations=100, alpha=1, beta=2, evap=0.5, Q=100):
+    n_cities = len(dist_matrix)
+    pheromone = np.ones((n_cities, n_cities))
+    best_path = None
+    best_cost = float('inf')
 
-# Load Image
-def load_img(path, size=256):
-    img = Image.open(path).convert("RGB")
-    transform = transforms.Compose([
-        transforms.Resize((size, size)),
-        transforms.ToTensor()
+    for it in range(n_iterations):
+        all_paths = []
+        all_costs = []
+        for ant in range(n_ants):
+            visited = [random.randint(0, n_cities-1)]
+            while len(visited) < n_cities:
+                current = visited[-1]
+                unvisited = [i for i in range(n_cities) if i not in visited]
+                probs = []
+                for j in unvisited:
+                    tau = pheromone[current][j] ** alpha
+                    eta = (1.0 / (dist_matrix[current][j] + 1e-10)) ** beta
+                    probs.append(tau * eta)
+                probs = np.array(probs)
+                probs /= probs.sum()
+                next_city = np.random.choice(unvisited, p=probs)
+                visited.append(next_city)
+            cost = sum(dist_matrix[visited[i]][visited[i+1]] for i in range(n_cities-1))
+            cost += dist_matrix[visited[-1]][visited[0]]
+            all_paths.append(visited)
+            all_costs.append(cost)
+            if cost < best_cost:
+                best_cost = cost
+                best_path = visited.copy()
+
+        # Update pheromones
+        pheromone *= (1 - evap)
+        for path, cost in zip(all_paths, all_costs):
+            for i in range(n_cities-1):
+                pheromone[path[i]][path[i+1]] += Q / cost
+            pheromone[path[-1]][path[0]] += Q / cost
+
+        print(f"Iter {it}: Best cost = {best_cost}")
+
+    return best_path, best_cost
+
+if __name__ == "__main__":
+    # Example distance matrix for 5 cities
+    dist = np.array([
+        [0, 2, 9, 10, 7],
+        [2, 0, 6, 4, 3],
+        [9, 6, 0, 8, 5],
+        [10, 4, 8, 0, 6],
+        [7, 3, 5, 6, 0]
     ])
-    return transform(img).unsqueeze(0).to(device)
-
-content = load_img("content.jpg")
-style = load_img("style.jpg")
-
-# VGG Model (UPDATED)
-vgg = vgg19(weights=VGG19_Weights.DEFAULT).features.to(device).eval()
-
-# Layers
-content_layer = '21'
-style_layers = ['0', '5', '10', '19', '28']
-
-# Gram Matrix
-def gram_matrix(t):
-    b, c, h, w = t.size()
-    t = t.view(c, h * w)
-    return torch.mm(t, t.t())
-
-# Extract Features
-def get_features(x):
-    features = {}
-    for name, layer in vgg._modules.items():
-        x = layer(x)
-        if name == content_layer:
-            features['content'] = x
-        if name in style_layers:
-            features[name] = x
-    return features
-
-# FIXED TARGET FEATURES (IMPORTANT)
-content_features = {k: v.detach() for k, v in get_features(content).items()}
-style_features = {k: v.detach() for k, v in get_features(style).items()}
-style_grams = {l: gram_matrix(style_features[l]).detach() for l in style_layers}
-
-# Output Image
-target = content.clone().requires_grad_(True).to(device)
-optimizer = optim.Adam([target], lr=0.003)
-
-# Training
-for i in range(200):
-    target_features = get_features(target)
-    
-    # Content Loss
-    c_loss = torch.mean((target_features['content'] - content_features['content'])**2)
-    
-    # Style Loss
-    s_loss = 0
-    for l in style_layers:
-        t_gram = gram_matrix(target_features[l])
-        s_gram = style_grams[l]
-        s_loss += torch.mean((t_gram - s_gram)**2)
-        
-    # Total Loss
-    loss = c_loss + 1e6 * s_loss
-    
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
-    
-    # Keep image values valid
-    target.data.clamp_(0, 1)
-    
-    if i % 50 == 0:
-        print(f"Step {i}, Loss: {loss.item():.2f}")
-
-# Show Output
-img = target.detach().cpu().squeeze().permute(1, 2, 0).numpy()
-plt.imshow(img)
-plt.title("Stylized Image")
-plt.axis("off")
-plt.show()
-
-# Save Output Image (NEW)
-output_img = Image.fromarray((img * 255).astype('uint8'))
-output_img.save("output.jpg")
-print("Output saved as output.jpg")
+    path, cost = aco_tsp(dist)
+    print("Best path:", path)
+    print("Best cost:", cost)
